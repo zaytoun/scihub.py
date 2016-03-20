@@ -229,7 +229,7 @@ def main():
                     logger.debug('Successfully downloaded file with identifier %s', paper['url'])
     elif args.file:
         with open(args.file, 'r') as f:
-            identifiers = f.readlines()
+            identifiers = f.read().splitlines()
             for identifier in identifiers:
                 result = sh.download(identifier, args.output)
                 if 'err' in result:
