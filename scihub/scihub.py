@@ -5,7 +5,6 @@ Sci-API Unofficial API
 [Search|Download] research papers from [scholar.google.com|sci-hub.io].
 
 @author zaytoun
-@email zaytoun@riseup.net
 """
 
 import os
