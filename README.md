@@ -1,13 +1,13 @@
 scihub.py
 =========
 
-scihub.py is an unofficial API for sci-hub.io. scihub.py can search for papers on Google Scholars and download papers from sci-hub.io. It can be imported independently or used from the command-line.
+scihub.py is an unofficial API for sci-hub.io. scihub.py can search for papers on Google Scholars and download papers from sci-hub.cc. It can be imported independently or used from the command-line.
 
 If you believe in open access to scientific papers, please donate to Sci-Hub.
 
 Features
 --------
-* Download specific articles directly or via sci-hub.io
+* Download specific articles directly or via sci-hub.cc
 * Download a collection of articles by passing in file of article identifiers
 * Search for articles on Google Scholars and download them
 
