@@ -1,5 +1,3 @@
-NOTE: [ELSEVIER COMPLAINT SHUTS DOWN SCI-HUB DOMAIN NAME](https://torrentfreak.com/elsevier-complaint-shuts-down-sci-hub-domain-name-160504/)
-
 scihub.py
 =========
 
