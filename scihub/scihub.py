@@ -58,7 +58,6 @@ class SciHub(object):
                 return results
             
             for paper in papers:
-                print paper
                 if not paper.find('table'):
                     source = None
                     pdf = paper.find('div', class_='gs_ggs gs_fl')
