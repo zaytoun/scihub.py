@@ -58,13 +58,14 @@ class SciHub(object):
                 return results
             
             for paper in papers:
+                print paper
                 if not paper.find('table'):
                     source = None
                     pdf = paper.find('div', class_='gs_ggs gs_fl')
                     link = paper.find('h3', class_='gs_rt')
                     
                     if pdf:
-                        source = pdf.find('div', class_='gs_md_wp gs_ttss').find('a')['href']
+                        source = pdf.find('a')['href']
                     elif link.find('a'):
                         source = link.find('a')['href']
                     else:
