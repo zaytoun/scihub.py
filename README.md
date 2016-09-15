@@ -81,7 +81,7 @@ results = sh.search('bittorrent', 5)
 
 # download the papers; will use sci-hub.io if it must
 for paper in results['papers']:
-	sh.download(paper)
+	sh.download(paper['url'])
 
 ```
 License
