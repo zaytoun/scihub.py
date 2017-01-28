@@ -109,15 +109,24 @@ class SciHub(object):
             # as a hacky fix, you can add them to your store
             # and verifying would work. will fix this later.
             res = requests.get(url, headers=HEADERS, verify=False)
-            return {
-                'pdf': res.content,
-                'url': url,
-                'name': self._generate_name(res)
-            }
+
+            if res.headers['Content-Type'] != 'application/pdf':
+                return {
+                    'err': 'Failed to fetch pdf with identifier %s (resolved url %s) due to captcha' 
+                       % (identifier, url)
+                }
+            else:
+                return {
+                    'pdf': res.content,
+                    'url': url,
+                    'name': self._generate_name(res)
+                }
+
         except requests.exceptions.RequestException as e:
+
             return {
-                'err': 'Failed to fetch pdf with identifier %s (resolved url %s) due to %s' 
-                   % (identifier, url, 'failed connection' if url else 'captcha')
+                'err': 'Failed to fetch pdf with identifier %s (resolved url %s) due to request exception.' 
+                   % (identifier, url)
             }
 
     def _get_direct_url(self, identifier):
