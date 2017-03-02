@@ -147,7 +147,8 @@ class SciHub(object):
         s = self._get_soup(res.content)
         iframe = s.find('iframe')
         if iframe:
-            return iframe.get('src')
+            return iframe.get('src') if not iframe.get('src').startswith('//') \
+               else 'http:' + iframe.get('src')
 
     def _classify(self, identifier):
         """
