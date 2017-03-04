@@ -225,11 +225,11 @@ def main():
             logger.debug('Successfully completed search with query %s', args.search)
         print results
     elif args.search_download:
-        results = sh.search(args.search, args.limit)
+        results = sh.search(args.search_download, args.limit)
         if 'err' in results:
             logger.debug('%s', results['err'])
         else:
-            logger.debug('Successfully completed search with query %s', args.search)
+            logger.debug('Successfully completed search with query %s', args.search_download)
             for paper in results['papers']:
                 result = sh.download(paper['url'], args.output)
                 if 'err' in result:
