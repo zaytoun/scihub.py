@@ -13,6 +13,7 @@ import logging
 import hashlib
 import argparse
 import requests
+import csv
 
 from bs4 import BeautifulSoup
 
@@ -91,6 +92,27 @@ class SciHub(object):
         if not 'err' in data:
             self._save(data['pdf'], 
                        os.path.join(destination, path if path else data['name']))
+        
+        return data
+        
+    def download_several(self, input, destination='', path=None):
+        """
+        Downloads a paper from sci-hub given an indentifier (DOI, PMID, URL).
+        Currently, this can potentially be blocked by a captcha if a certain
+        limit has been reached.
+        
+        The file must be a CSV file. It should be composed by one identifier 
+        (DOI, PMID, URL) in each line.
+        """
+        csv_path = str(input)
+        with open(csv_path, 'rU') as csvfile:
+        	identifiers = csv.reader(csvfile, delimiter=';')
+        	csvfile.seek(0)
+        	for identifier in identifiers:
+        		data = self.fetch(identifier[0])
+        		if not 'err' in data:
+        			self._save(data['pdf'], 
+        			os.path.join(destination, path if path else data['name']))
         
         return data
 
@@ -199,6 +221,7 @@ def main():
 
     parser = argparse.ArgumentParser(description='SciHub - To remove all barriers in the way of science.')
     parser.add_argument('-d', '--download', metavar='(DOI|PMID|URL)', help='tries to find and download the paper', type=str)
+    parser.add_argument('-dd', '--download_several', metavar='csv_file', help='tries to find and download the paper included in a csv file', type=str)
     parser.add_argument('-f', '--file', metavar='path', help='pass file with list of identifiers and download each', type=str)
     parser.add_argument('-s', '--search', metavar='query', help='search Google Scholars', type=str)
     parser.add_argument('-sd', '--search_download', metavar='query', help='search Google Scholars and download if possible', type=str)
@@ -217,6 +240,12 @@ def main():
             logger.debug('%s', result['err'])
         else:
             logger.debug('Successfully downloaded file with identifier %s', args.download)
+    if args.download_several:
+        result = sh.download_several(args.download_several, args.output)
+        if 'err' in result:
+            logger.debug('%s', result['err'])
+        else:
+            logger.debug('Successfully downloaded files contained in the csv %s', args.download)
     elif args.search:
         results = sh.search(args.search, args.limit)
         if 'err' in results:

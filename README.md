@@ -33,6 +33,9 @@ optional arguments:
   -h, --help            show this help message and exit
   -d (DOI|PMID|URL), --download (DOI|PMID|URL)
                         tries to find and download the paper
+  -dd (csv_path), --download_several (csv_path)
+                        tries to find and download the papers included in a csv file.
+                        The csv file should include one identifier (DOI|PMID|URL) per line
   -f path, --file path  pass file with list of identifiers and download each
   -s query, --search query
                         search Google Scholars
