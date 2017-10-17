@@ -53,7 +53,7 @@ class SciHub(object):
             papers = s.find_all('div', class_="gs_r")
             
             if not papers:
-                if 'CaptchaRedirect' in res.content:
+                if b'CaptchaRedirect' in res.content:
                     results['err'] = 'Failed to complete search with query %s (captcha)' % query
                 return results
             
@@ -223,7 +223,7 @@ def main():
             logger.debug('%s', results['err'])
         else:
             logger.debug('Successfully completed search with query %s', args.search)
-        print results
+        print(results)
     elif args.search_download:
         results = sh.search(args.search_download, args.limit)
         if 'err' in results:
