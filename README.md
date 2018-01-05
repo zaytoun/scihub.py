@@ -1,4 +1,5 @@
 scihub.py
+[![Python](https://img.shields.io/badge/Python-3%2B-blue.svg)](https://www.python.org)
 =========
 
 scihub.py is an unofficial API for sci-hub.cc. scihub.py can search for papers on Google Scholars and download papers from sci-hub.cc. It can be imported independently or used from the command-line.
@@ -42,6 +43,7 @@ optional arguments:
   -o path, --output path
                         directory to store papers
   -v, --verbose         increase output verbosity
+  -p, --proxy           set proxy
 ```
 
 You can also import scihub. The following examples below demonstrate all the features.
