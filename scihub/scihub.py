@@ -7,18 +7,19 @@ Sci-API Unofficial API
 @author zaytoun
 """
 
-import os
-import re
-import logging
-import hashlib
 import argparse
-import requests
+import hashlib
+import logging
+import os
 
+import requests
 from bs4 import BeautifulSoup
+from retrying import retry
 
 # log config
 logging.basicConfig()
 logger = logging.getLogger('Sci-Hub')
+logger.setLevel(logging.DEBUG)
 
 # constants
 SCIHUB_BASE_URL = 'http://sci-hub.cc/'
@@ -66,7 +67,7 @@ class SciHub(object):
     def _change_base_url(self):
         del self.available_base_url_list[0]
         self.base_url = 'http://' + self.available_base_url_list[0] + '/'
-        logger.info('Now, I use {}'.format(self.available_base_url_list[0]))
+        logger.info("I'm changing to {}".format(self.available_base_url_list[0]))
 
     def search(self, query, limit=10, download=False):
         """
@@ -115,6 +116,7 @@ class SciHub(object):
 
             start += 10
 
+    @retry(wait_random_min=100, wait_random_max=1000, stop_max_attempt_number=10)
     def download(self, identifier, destination='', path=None):
         """
         Downloads a paper from sci-hub given an indentifier (DOI, PMID, URL).
@@ -146,10 +148,13 @@ class SciHub(object):
             res = self.sess.get(url, verify=False)
 
             if res.headers['Content-Type'] != 'application/pdf':
-                return {
-                    'err': 'Failed to fetch pdf with identifier %s (resolved url %s) due to captcha'
-                           % (identifier, url)
-                }
+                self._change_base_url()
+                raise CaptchaNeedException('Failed to fetch pdf with identifier %s '
+                                           '(resolved url %s) due to captcha' % (identifier, url))
+                # return {
+                #     'err': 'Failed to fetch pdf with identifier %s (resolved url %s) due to captcha'
+                #            % (identifier, url)
+                # }
             else:
                 return {
                     'pdf': res.content,
@@ -229,6 +234,10 @@ class SciHub(object):
         name = res.url.split('/')[-1]
         pdf_hash = hashlib.md5(res.content).hexdigest()
         return '%s-%s' % (pdf_hash, name[-20:])
+
+
+class CaptchaNeedException(Exception):
+    pass
 
 
 def main():
