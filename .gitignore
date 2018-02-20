@@ -86,3 +86,7 @@ ENV/
 
 # .DSTORE
 .DS_Store
+
+# IDE 
+.vscode/
+.idea/

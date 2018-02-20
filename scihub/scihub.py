@@ -7,31 +7,67 @@ Sci-API Unofficial API
 @author zaytoun
 """
 
-import os
-import re
-import logging
-import hashlib
 import argparse
+import hashlib
+import logging
+import os
+
 import requests
-
 from bs4 import BeautifulSoup
+from retrying import retry
 
-# for now, suppress warnings due to unverified HTTPS request; this will be fixed
-from requests.packages.urllib3.exceptions import InsecureRequestWarning
-requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+# log config
+logging.basicConfig()
+logger = logging.getLogger('Sci-Hub')
+logger.setLevel(logging.DEBUG)
 
 # constants
 SCIHUB_BASE_URL = 'http://sci-hub.cc/'
 SCHOLARS_BASE_URL = 'https://scholar.google.com/scholar'
 HEADERS = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:27.0) Gecko/20100101 Firefox/27.0'}
+AVAILABLE_SCIHUB_BASE_URL = ['sci-hub.hk',
+                             'sci-hub.tw',
+                             'sci-hub.la',
+                             'sci-hub.mn',
+                             'sci-hub.name',
+                             'sci-hub.is',
+                             'sci-hub.tv'
+                             'sci-hub.ws'
+                             'www.sci-hub.cn'
+                             'sci-hub.sci-hub.hk',
+                             'sci-hub.sci-hub.tw',
+                             'sci-hub.sci-hub.mn',
+                             'sci-hub.sci-hub.tv',
+                             'tree.sci-hub.la']
+
 
 class SciHub(object):
     """
     SciHub class can search for papers on Google Scholars 
     and fetch/download papers from sci-hub.io
     """
+
     def __init__(self):
-        pass
+        self.sess = requests.Session()
+        self.sess.headers = HEADERS
+        self.available_base_url_list = AVAILABLE_SCIHUB_BASE_URL
+        self.base_url = 'http://' + self.available_base_url_list[0] + '/'
+
+    def set_proxy(self, proxy):
+        '''
+        set proxy for session
+        :param proxy_dict:
+        :return:
+        '''
+        if proxy:
+            self.sess.proxies = {
+                "http": proxy,
+                "https": proxy, }
+
+    def _change_base_url(self):
+        del self.available_base_url_list[0]
+        self.base_url = 'http://' + self.available_base_url_list[0] + '/'
+        logger.info("I'm changing to {}".format(self.available_base_url_list[0]))
 
     def search(self, query, limit=10, download=False):
         """
@@ -44,42 +80,43 @@ class SciHub(object):
 
         while True:
             try:
-                res = requests.get(SCHOLARS_BASE_URL, params={'q': query, 'start': start}, headers=HEADERS)
+                res = self.sess.get(SCHOLARS_BASE_URL, params={'q': query, 'start': start})
             except requests.exceptions.RequestException as e:
                 results['err'] = 'Failed to complete search with query %s (connection error)' % query
                 return results
 
             s = self._get_soup(res.content)
             papers = s.find_all('div', class_="gs_r")
-            
+
             if not papers:
                 if 'CaptchaRedirect' in res.content:
                     results['err'] = 'Failed to complete search with query %s (captcha)' % query
                 return results
-            
+
             for paper in papers:
                 if not paper.find('table'):
                     source = None
                     pdf = paper.find('div', class_='gs_ggs gs_fl')
                     link = paper.find('h3', class_='gs_rt')
-                    
+
                     if pdf:
                         source = pdf.find('a')['href']
                     elif link.find('a'):
                         source = link.find('a')['href']
                     else:
                         continue
-                    
+
                     results['papers'].append({
                         'name': link.text,
                         'url': source
                     })
-                    
+
                     if len(results['papers']) >= limit:
                         return results
-            
+
             start += 10
 
+    @retry(wait_random_min=100, wait_random_max=1000, stop_max_attempt_number=10)
     def download(self, identifier, destination='', path=None):
         """
         Downloads a paper from sci-hub given an indentifier (DOI, PMID, URL).
@@ -89,9 +126,9 @@ class SciHub(object):
         data = self.fetch(identifier)
 
         if not 'err' in data:
-            self._save(data['pdf'], 
+            self._save(data['pdf'],
                        os.path.join(destination, path if path else data['name']))
-        
+
         return data
 
     def fetch(self, identifier):
@@ -108,13 +145,16 @@ class SciHub(object):
             # and requests doesn't know how to download them.
             # as a hacky fix, you can add them to your store
             # and verifying would work. will fix this later.
-            res = requests.get(url, headers=HEADERS, verify=False)
+            res = self.sess.get(url, verify=False)
 
             if res.headers['Content-Type'] != 'application/pdf':
-                return {
-                    'err': 'Failed to fetch pdf with identifier %s (resolved url %s) due to captcha' 
-                       % (identifier, url)
-                }
+                self._change_base_url()
+                raise CaptchaNeedException('Failed to fetch pdf with identifier %s '
+                                           '(resolved url %s) due to captcha' % (identifier, url))
+                # return {
+                #     'err': 'Failed to fetch pdf with identifier %s (resolved url %s) due to captcha'
+                #            % (identifier, url)
+                # }
             else:
                 return {
                     'pdf': res.content,
@@ -122,11 +162,15 @@ class SciHub(object):
                     'name': self._generate_name(res)
                 }
 
+        except requests.exceptions.ConnectionError:
+            logger.info('{} cannot acess,changing'.format(self.available_base_url_list[0]))
+            self._change_base_url()
+
         except requests.exceptions.RequestException as e:
 
             return {
-                'err': 'Failed to fetch pdf with identifier %s (resolved url %s) due to request exception.' 
-                   % (identifier, url)
+                'err': 'Failed to fetch pdf with identifier %s (resolved url %s) due to request exception.'
+                       % (identifier, url)
             }
 
     def _get_direct_url(self, identifier):
@@ -136,19 +180,19 @@ class SciHub(object):
         id_type = self._classify(identifier)
 
         return identifier if id_type == 'url-direct' \
-                else self._search_direct_url(identifier)
+            else self._search_direct_url(identifier)
 
     def _search_direct_url(self, identifier):
         """
         Sci-Hub embeds papers in an iframe. This function finds the actual
         source url which looks something like https://moscow.sci-hub.io/.../....pdf.
         """
-        res = requests.get(SCIHUB_BASE_URL + identifier, headers=HEADERS, verify=False)
+        res = self.sess.get(self.base_url + identifier, verify=False)
         s = self._get_soup(res.content)
         iframe = s.find('iframe')
         if iframe:
             return iframe.get('src') if not iframe.get('src').startswith('//') \
-               else 'http:' + iframe.get('src')
+                else 'http:' + iframe.get('src')
 
     def _classify(self, identifier):
         """
@@ -191,25 +235,35 @@ class SciHub(object):
         pdf_hash = hashlib.md5(res.content).hexdigest()
         return '%s-%s' % (pdf_hash, name[-20:])
 
+
+class CaptchaNeedException(Exception):
+    pass
+
+
 def main():
     sh = SciHub()
 
-    logging.basicConfig()
-    logger = logging.getLogger('Sci-Hub')
-
     parser = argparse.ArgumentParser(description='SciHub - To remove all barriers in the way of science.')
-    parser.add_argument('-d', '--download', metavar='(DOI|PMID|URL)', help='tries to find and download the paper', type=str)
-    parser.add_argument('-f', '--file', metavar='path', help='pass file with list of identifiers and download each', type=str)
+    parser.add_argument('-d', '--download', metavar='(DOI|PMID|URL)', help='tries to find and download the paper',
+                        type=str)
+    parser.add_argument('-f', '--file', metavar='path', help='pass file with list of identifiers and download each',
+                        type=str)
     parser.add_argument('-s', '--search', metavar='query', help='search Google Scholars', type=str)
-    parser.add_argument('-sd', '--search_download', metavar='query', help='search Google Scholars and download if possible', type=str)
-    parser.add_argument('-l', '--limit', metavar='N', help='the number of search results to limit to', default=10, type=int)
+    parser.add_argument('-sd', '--search_download', metavar='query',
+                        help='search Google Scholars and download if possible', type=str)
+    parser.add_argument('-l', '--limit', metavar='N', help='the number of search results to limit to', default=10,
+                        type=int)
     parser.add_argument('-o', '--output', metavar='path', help='directory to store papers', default='', type=str)
     parser.add_argument('-v', '--verbose', help='increase output verbosity', action='store_true')
-    
+    parser.add_argument('-p', '--proxy', help='via proxy format like socks5://user:pass@host:port', action='store',
+                        default='socks5://127.0.0.1:1080', type=str)
+
     args = parser.parse_args()
 
     if args.verbose:
         logger.setLevel(logging.DEBUG)
+    if args.proxy:
+        sh.set_proxy(args.proxy)
 
     if args.download:
         result = sh.download(args.download, args.output)
@@ -223,7 +277,7 @@ def main():
             logger.debug('%s', results['err'])
         else:
             logger.debug('Successfully completed search with query %s', args.search)
-        print results
+        print(results)
     elif args.search_download:
         results = sh.search(args.search_download, args.limit)
         if 'err' in results:
@@ -245,6 +299,7 @@ def main():
                     logger.debug('%s', result['err'])
                 else:
                     logger.debug('Successfully downloaded file with identifier %s', identifier)
+
 
 if __name__ == '__main__':
     main()
