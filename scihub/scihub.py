@@ -255,8 +255,7 @@ def main():
                         type=int)
     parser.add_argument('-o', '--output', metavar='path', help='directory to store papers', default='', type=str)
     parser.add_argument('-v', '--verbose', help='increase output verbosity', action='store_true')
-    parser.add_argument('-p', '--proxy', help='via proxy format like socks5://user:pass@host:port', action='store',
-                        default='socks5://127.0.0.1:1080', type=str)
+    parser.add_argument('-p', '--proxy', help='via proxy format like socks5://user:pass@host:port', action='store', type=str)
 
     args = parser.parse_args()
 
