@@ -48,7 +48,8 @@ optional arguments:
 
 You can also import scihub. The following examples below demonstrate all the features.
 
-###fetch
+### fetch
+
 ```
 from scihub import SciHub
 
@@ -62,7 +63,9 @@ sh = SciHub()
 # }
 result = sh.fetch('http://ieeexplore.ieee.org/xpl/login.jsp?tp=&arnumber=1648853')
 ```
-###download
+
+### download
+
 ```
 from scihub import SciHub
 
@@ -72,7 +75,9 @@ sh = SciHub()
 # if no path given, a unique name will be used as the file name
 result = sh.download('http://ieeexplore.ieee.org/xpl/login.jsp?tp=&arnumber=1648853', path='paper.pdf')
 ```
-###search
+
+### search
+
 ```
 from scihub import SciHub
 
