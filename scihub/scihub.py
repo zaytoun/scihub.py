@@ -7,6 +7,7 @@ Sci-API Unofficial API
 @author zaytoun
 """
 
+import re
 import argparse
 import hashlib
 import logging
@@ -137,9 +138,10 @@ class SciHub(object):
         If the indentifier is a DOI, PMID, or URL pay-wall, then use Sci-Hub
         to access and download paper. Otherwise, just download paper directly.
         """
-        url = self._get_direct_url(identifier)
 
         try:
+            url = self._get_direct_url(identifier)
+
             # verify=False is dangerous but sci-hub.io 
             # requires intermediate certificates to verify
             # and requests doesn't know how to download them.
@@ -163,11 +165,10 @@ class SciHub(object):
                 }
 
         except requests.exceptions.ConnectionError:
-            logger.info('{} cannot acess,changing'.format(self.available_base_url_list[0]))
+            logger.info('Cannot access {}, changing url'.format(self.available_base_url_list[0]))
             self._change_base_url()
 
         except requests.exceptions.RequestException as e:
-
             return {
                 'err': 'Failed to fetch pdf with identifier %s (resolved url %s) due to request exception.'
                        % (identifier, url)
@@ -232,13 +233,12 @@ class SciHub(object):
         of the url which typically provides a good paper identifier.
         """
         name = res.url.split('/')[-1]
+        name = re.sub('#view=(.+)', '', name)
         pdf_hash = hashlib.md5(res.content).hexdigest()
         return '%s-%s' % (pdf_hash, name[-20:])
 
-
 class CaptchaNeedException(Exception):
     pass
-
 
 def main():
     sh = SciHub()
