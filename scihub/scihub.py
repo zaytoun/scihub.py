@@ -23,24 +23,8 @@ logger = logging.getLogger('Sci-Hub')
 logger.setLevel(logging.DEBUG)
 
 # constants
-SCIHUB_BASE_URL = 'http://sci-hub.cc/'
 SCHOLARS_BASE_URL = 'https://scholar.google.com/scholar'
 HEADERS = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:27.0) Gecko/20100101 Firefox/27.0'}
-AVAILABLE_SCIHUB_BASE_URL = ['sci-hub.hk',
-                             'sci-hub.tw',
-                             'sci-hub.la',
-                             'sci-hub.mn',
-                             'sci-hub.name',
-                             'sci-hub.is',
-                             'sci-hub.tv'
-                             'sci-hub.ws'
-                             'www.sci-hub.cn'
-                             'sci-hub.sci-hub.hk',
-                             'sci-hub.sci-hub.tw',
-                             'sci-hub.sci-hub.mn',
-                             'sci-hub.sci-hub.tv',
-                             'tree.sci-hub.la']
-
 
 class SciHub(object):
     """
@@ -51,8 +35,20 @@ class SciHub(object):
     def __init__(self):
         self.sess = requests.Session()
         self.sess.headers = HEADERS
-        self.available_base_url_list = AVAILABLE_SCIHUB_BASE_URL
-        self.base_url = 'http://' + self.available_base_url_list[0] + '/'
+        self.available_base_url_list = self._get_available_scihub_urls()
+        self.base_url = self.available_base_url_list[0] + '/'
+
+    def _get_available_scihub_urls(self):
+        '''
+        Finds available scihub urls via https://whereisscihub.now.sh/
+        '''
+        urls = []
+        res = requests.get('https://whereisscihub.now.sh/')
+        s = self._get_soup(res.content)
+        for a in s.find_all('a', href=True):
+            if 'sci-hub.' in a['href']:
+                urls.append(a['href'])
+        return urls
 
     def set_proxy(self, proxy):
         '''
@@ -67,7 +63,7 @@ class SciHub(object):
 
     def _change_base_url(self):
         del self.available_base_url_list[0]
-        self.base_url = 'http://' + self.available_base_url_list[0] + '/'
+        self.base_url = self.available_base_url_list[0] + '/'
         logger.info("I'm changing to {}".format(self.available_base_url_list[0]))
 
     def search(self, query, limit=10, download=False):
