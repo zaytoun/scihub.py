@@ -14,6 +14,7 @@ import logging
 import os
 
 import requests
+import urllib3
 from bs4 import BeautifulSoup
 from retrying import retry
 
@@ -21,6 +22,9 @@ from retrying import retry
 logging.basicConfig()
 logger = logging.getLogger('Sci-Hub')
 logger.setLevel(logging.DEBUG)
+
+#
+urllib3.disable_warnings()
 
 # constants
 SCHOLARS_BASE_URL = 'https://scholar.google.com/scholar'
@@ -62,6 +66,8 @@ class SciHub(object):
                 "https": proxy, }
 
     def _change_base_url(self):
+        if not self.available_base_url_list:
+            raise Exception('Ran out of valid sci-hub urls')
         del self.available_base_url_list[0]
         self.base_url = self.available_base_url_list[0] + '/'
         logger.info("I'm changing to {}".format(self.available_base_url_list[0]))
@@ -147,6 +153,8 @@ class SciHub(object):
 
             if res.headers['Content-Type'] != 'application/pdf':
                 self._change_base_url()
+                logger.info('Failed to fetch pdf with identifier %s '
+                                           '(resolved url %s) due to captcha' % (identifier, url))
                 raise CaptchaNeedException('Failed to fetch pdf with identifier %s '
                                            '(resolved url %s) due to captcha' % (identifier, url))
                 # return {
@@ -165,6 +173,8 @@ class SciHub(object):
             self._change_base_url()
 
         except requests.exceptions.RequestException as e:
+            logger.info('Failed to fetch pdf with identifier %s (resolved url %s) due to request exception.'
+                       % (identifier, url))
             return {
                 'err': 'Failed to fetch pdf with identifier %s (resolved url %s) due to request exception.'
                        % (identifier, url)
