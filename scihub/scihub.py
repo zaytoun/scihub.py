@@ -28,7 +28,8 @@ urllib3.disable_warnings()
 
 # constants
 SCHOLARS_BASE_URL = 'https://scholar.google.com/scholar'
-HEADERS = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:27.0) Gecko/20100101 Firefox/27.0'}
+HEADERS = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:73.0) Gecko/20100101 Firefox/73.0'}
+
 
 class SciHub(object):
     """
@@ -36,23 +37,10 @@ class SciHub(object):
     and fetch/download papers from sci-hub.io
     """
 
-    def __init__(self):
+    def __init__(self, sci_hub_url):
         self.sess = requests.Session()
         self.sess.headers = HEADERS
-        self.available_base_url_list = self._get_available_scihub_urls()
-        self.base_url = self.available_base_url_list[0] + '/'
-
-    def _get_available_scihub_urls(self):
-        '''
-        Finds available scihub urls via https://whereisscihub.now.sh/
-        '''
-        urls = []
-        res = requests.get('https://whereisscihub.now.sh/')
-        s = self._get_soup(res.content)
-        for a in s.find_all('a', href=True):
-            if 'sci-hub.' in a['href']:
-                urls.append(a['href'])
-        return urls
+        self.sci_hub_url = sci_hub_url
 
     def set_proxy(self, proxy):
         '''
@@ -64,13 +52,6 @@ class SciHub(object):
             self.sess.proxies = {
                 "http": proxy,
                 "https": proxy, }
-
-    def _change_base_url(self):
-        if not self.available_base_url_list:
-            raise Exception('Ran out of valid sci-hub urls')
-        del self.available_base_url_list[0]
-        self.base_url = self.available_base_url_list[0] + '/'
-        logger.info("I'm changing to {}".format(self.available_base_url_list[0]))
 
     def search(self, query, limit=10, download=False):
         """
@@ -152,7 +133,6 @@ class SciHub(object):
             res = self.sess.get(url, verify=False)
 
             if res.headers['Content-Type'] != 'application/pdf':
-                self._change_base_url()
                 logger.info('Failed to fetch pdf with identifier %s '
                                            '(resolved url %s) due to captcha' % (identifier, url))
                 raise CaptchaNeedException('Failed to fetch pdf with identifier %s '
@@ -167,10 +147,6 @@ class SciHub(object):
                     'url': url,
                     'name': self._generate_name(res)
                 }
-
-        except requests.exceptions.ConnectionError:
-            logger.info('Cannot access {}, changing url'.format(self.available_base_url_list[0]))
-            self._change_base_url()
 
         except requests.exceptions.RequestException as e:
             logger.info('Failed to fetch pdf with identifier %s (resolved url %s) due to request exception.'
@@ -194,7 +170,7 @@ class SciHub(object):
         Sci-Hub embeds papers in an iframe. This function finds the actual
         source url which looks something like https://moscow.sci-hub.io/.../....pdf.
         """
-        res = self.sess.get(self.base_url + identifier, verify=False)
+        res = self.sess.get(self.sci_hub_url + identifier, verify=False)
         s = self._get_soup(res.content)
         iframe = s.find('iframe')
         if iframe:
@@ -209,7 +185,7 @@ class SciHub(object):
         pmid - PubMed ID
         doi - digital object identifier
         """
-        if (identifier.startswith('http') or identifier.startswith('https')):
+        if identifier.startswith('http') or identifier.startswith('https'):
             if identifier.endswith('pdf'):
                 return 'url-direct'
             else:
@@ -243,13 +219,14 @@ class SciHub(object):
         pdf_hash = hashlib.md5(res.content).hexdigest()
         return '%s-%s' % (pdf_hash, name[-20:])
 
+
 class CaptchaNeedException(Exception):
     pass
 
-def main():
-    sh = SciHub()
 
+def main():
     parser = argparse.ArgumentParser(description='SciHub - To remove all barriers in the way of science.')
+    parser.add_argument('sci_hub_url', help="set scihub website URL")
     parser.add_argument('-d', '--download', metavar='(DOI|PMID|URL)', help='tries to find and download the paper',
                         type=str)
     parser.add_argument('-f', '--file', metavar='path', help='pass file with list of identifiers and download each',
@@ -264,6 +241,8 @@ def main():
     parser.add_argument('-p', '--proxy', help='via proxy format like socks5://user:pass@host:port', action='store', type=str)
 
     args = parser.parse_args()
+
+    sh = SciHub(args.sci_hub_url)
 
     if args.verbose:
         logger.setLevel(logging.DEBUG)
@@ -282,7 +261,6 @@ def main():
             logger.debug('%s', results['err'])
         else:
             logger.debug('Successfully completed search with query %s', args.search)
-        print(results)
     elif args.search_download:
         results = sh.search(args.search_download, args.limit)
         if 'err' in results:

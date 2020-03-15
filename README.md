@@ -2,13 +2,13 @@ scihub.py
 [![Python](https://img.shields.io/badge/Python-3%2B-blue.svg)](https://www.python.org)
 =========
 
-scihub.py is an unofficial API for sci-hub.cc. scihub.py can search for papers on Google Scholars and download papers from sci-hub.cc. It can be imported independently or used from the command-line.
+scihub.py is an unofficial API for sci-hub. scihub.py can search for papers on Google Scholars and download papers from a sci-hub website. It can be imported independently or used from the command-line.
 
 If you believe in open access to scientific papers, please donate to Sci-Hub.
 
 Features
 --------
-* Download specific articles directly or via sci-hub.cc
+* Download specific articles directly or via a sci-hub website
 * Download a collection of articles by passing in file of article identifiers
 * Search for articles on Google Scholars and download them
 
@@ -27,8 +27,12 @@ You can interact with scihub.py from the commandline:
 ```
 usage: scihub.py [-h] [-d (DOI|PMID|URL)] [-f path] [-s query] [-sd query]
                  [-l N] [-o path] [-v]
+                 sci_hub_url
 
 SciHub - To remove all barriers in the way of science.
+
+positional arguments:
+  sci_hub_url           set scihub website URL
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -53,7 +57,7 @@ You can also import scihub. The following examples below demonstrate all the fea
 ```
 from scihub import SciHub
 
-sh = SciHub()
+sh = SciHub(SCI_HUB_URL)
 
 # fetch specific article (don't download to disk)
 # this will return a dictionary in the form 
@@ -69,7 +73,7 @@ result = sh.fetch('http://ieeexplore.ieee.org/xpl/login.jsp?tp=&arnumber=1648853
 ```
 from scihub import SciHub
 
-sh = SciHub()
+    sh = SciHub(SCI_HUB_URL)
 
 # exactly the same thing as fetch except downloads the articles to disk
 # if no path given, a unique name will be used as the file name
@@ -81,7 +85,7 @@ result = sh.download('http://ieeexplore.ieee.org/xpl/login.jsp?tp=&arnumber=1648
 ```
 from scihub import SciHub
 
-sh = SciHub()
+sh = SciHub(SCI_HUB_URL)
 
 # retrieve 5 articles on Google Scholars related to 'bittorrent'
 results = sh.search('bittorrent', 5)
