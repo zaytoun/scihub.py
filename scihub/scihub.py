@@ -44,10 +44,10 @@ class SciHub(object):
 
     def _get_available_scihub_urls(self):
         '''
-        Finds available scihub urls via https://whereisscihub.now.sh/
+        Finds available scihub urls via https://sci-hub.now.sh/
         '''
         urls = []
-        res = requests.get('https://whereisscihub.now.sh/')
+        res = requests.get('https://sci-hub.now.sh/')
         s = self._get_soup(res.content)
         for a in s.find_all('a', href=True):
             if 'sci-hub.' in a['href']:
