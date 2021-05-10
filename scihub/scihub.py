@@ -65,6 +65,9 @@ class SciHub(object):
                 "http": proxy,
                 "https": proxy, }
 
+    def clear_proxy(self):
+        self.sess.proxies = {}
+
     def _change_base_url(self):
         if not self.available_base_url_list:
             raise Exception('Ran out of valid sci-hub urls')
@@ -184,6 +187,7 @@ class SciHub(object):
         """
         Finds the direct source url for a given identifier.
         """
+        identifier = identifier.strip()
         id_type = self._classify(identifier)
 
         return identifier if id_type == 'url-direct' \
