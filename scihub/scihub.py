@@ -7,6 +7,7 @@ Sci-API Unofficial API
 @author zaytoun
 """
 
+from backend.scihubTab.scihubpy.scihub.cite import RefAPI
 import re
 import argparse
 import hashlib
@@ -54,6 +55,10 @@ class SciHub(object):
                 urls.append(a['href'])
         return urls
 
+    @property
+    def proxy(self):
+        return self._proxy
+
     def set_proxy(self, proxy):
         '''
         set proxy for session
@@ -64,9 +69,11 @@ class SciHub(object):
             self.sess.proxies = {
                 "http": proxy,
                 "https": proxy, }
+            self._proxy = proxy
 
     def clear_proxy(self):
         self.sess.proxies = {}
+        self._proxy = {}
 
     def _change_base_url(self):
         if not self.available_base_url_list:
@@ -137,6 +144,16 @@ class SciHub(object):
 
         return data
 
+    def cite(self, identifier, format):
+        """[summary]
+
+        Args:
+            identifier ([type]): [description]
+        """
+        proxies = self.proxy
+        api = RefAPI(identifier, proxies)
+        return api.render(format)
+
     def fetch(self, identifier):
         """
         Fetches the paper by first retrieving the direct link to the pdf.
@@ -153,7 +170,6 @@ class SciHub(object):
             # as a hacky fix, you can add them to your store
             # and verifying would work. will fix this later.
             res = self.sess.get(url, verify=False)
-
             if res.headers['Content-Type'] != 'application/pdf':
                 self._change_base_url()
                 logger.info('Failed to fetch pdf with identifier %s '
