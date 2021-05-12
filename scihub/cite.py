@@ -278,8 +278,6 @@ class CrossRefParser(ParserBase):
             pdict["issue"] = get_string(issue_meta, "issue")
         else:
             pdict["has_print"] = False
-        print('------\n')
-        print(pdict)
         return pdict
 
 class arXivParser(ParserBase):
