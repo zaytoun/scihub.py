@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # version: 0.0.1
@@ -16,7 +15,7 @@ import re
 from calendar import month_abbr, month_name
 from collections import defaultdict
 from datetime import datetime
-from pprint import pprint
+
 
 import bs4
 import requests
@@ -25,7 +24,6 @@ from bs4 import BeautifulSoup
 from pylatexenc.latexencode import unicode_to_latex
 from titlecase import titlecase
 
-print = pprint
 
 class Filters:
     """Filter used for Cheetah Template engine"""
@@ -402,6 +400,8 @@ class RefAPI:
 if __name__ == "__main__":
     """ Test section
     """
+    from pprint import pprint
+    print = pprint
 
     reference = 'https://doi.org/10.1021/acs.macromol.8b00309'
     formats = ['bibtex', 'md', 'text', 'rst']
