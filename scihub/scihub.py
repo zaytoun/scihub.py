@@ -7,6 +7,7 @@ Sci-API Unofficial API
 @author zaytoun
 """
 
+from .cite import RefAPI
 import re
 import argparse
 import hashlib
@@ -36,8 +37,10 @@ class SciHub(object):
     and fetch/download papers from sci-hub.io
     """
 
-    def __init__(self):
+    def __init__(self, proxy=None):
         self.sess = requests.Session()
+        if proxy is not None:
+            self.set_proxy(proxy)
         self.sess.headers = HEADERS
         self.available_base_url_list = self._get_available_scihub_urls()
         self.base_url = self.available_base_url_list[0] + '/'
@@ -47,7 +50,7 @@ class SciHub(object):
         Finds available scihub urls via https://sci-hub.now.sh/
         '''
         urls = []
-        res = requests.get('https://sci-hub.now.sh/')
+        res = requests.get('https://sci-hub.now.sh/', proxies=self.proxy)
         s = self._get_soup(res.content)
         for a in s.find_all('a', href=True):
             if 'sci-hub.' in a['href']:
@@ -61,9 +64,15 @@ class SciHub(object):
         :return:
         '''
         if proxy:
-            self.sess.proxies = {
+            proxy = {
                 "http": proxy,
                 "https": proxy, }
+            self.sess.proxies = proxy
+            self.proxy = proxy
+
+    def clear_proxy(self):
+        self.sess.proxies = {}
+        self.proxy = {}
 
     def _change_base_url(self):
         if not self.available_base_url_list:
@@ -134,6 +143,20 @@ class SciHub(object):
 
         return data
 
+    def cite(self, identifier):
+        """
+
+        get the citation via DOI or arXiv. Supported formats = ['bibtex', 'md', 'text', 'rst']
+
+        """
+        proxies = self.proxy
+        api = RefAPI(identifier, proxies)
+        formats = ['bibtex', 'md', 'text', 'rst']
+        results = {}
+        for format in formats:
+            results[format] = api.render(format)
+        return results
+
     def fetch(self, identifier):
         """
         Fetches the paper by first retrieving the direct link to the pdf.
@@ -150,7 +173,6 @@ class SciHub(object):
             # as a hacky fix, you can add them to your store
             # and verifying would work. will fix this later.
             res = self.sess.get(url, verify=False)
-
             if res.headers['Content-Type'] != 'application/pdf':
                 self._change_base_url()
                 logger.info('Failed to fetch pdf with identifier %s '
@@ -184,6 +206,7 @@ class SciHub(object):
         """
         Finds the direct source url for a given identifier.
         """
+        identifier = identifier.strip()
         id_type = self._classify(identifier)
 
         return identifier if id_type == 'url-direct' \
@@ -263,6 +286,8 @@ def main():
     parser.add_argument('-v', '--verbose', help='increase output verbosity', action='store_true')
     parser.add_argument('-p', '--proxy', help='via proxy format like socks5://user:pass@host:port', action='store', type=str)
 
+    parser.add_argument('-c', '--citation', metavar='(DOI|arXiv)', help='get the citation of the paper', type=str)
+
     args = parser.parse_args()
 
     if args.verbose:
@@ -276,6 +301,10 @@ def main():
             logger.debug('%s', result['err'])
         else:
             logger.debug('Successfully downloaded file with identifier %s', args.download)
+    elif args.citation:
+        results = sh.cite(args.citation)
+        print(results)
+
     elif args.search:
         results = sh.search(args.search, args.limit)
         if 'err' in results:

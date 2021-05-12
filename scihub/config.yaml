@@ -1,0 +1,73 @@
+# refparse format config file
+# format uses Cheetah3 as a template engine
+# FN is refparse Filter functionality class
+
+bibtex: |
+  #set $pub_month = $print_month and $print_month or $online_month
+  #set $year = $print_year and $print_year or $online_year
+  #set $month = $FN.month_abbr($pub_month).lower()
+  #set $bibkey = $author[0][0] + $year + $month
+  #set $latex_author = [[$FN.unicode_to_latex(name) for name in names] for names in $author]
+  #set $author_ = ' and '.join($FN.map('{0[0]}, {0[1]}'.format, $latex_author))
+  #set $pages_ = '--'.join($pages)
+  #set $title_ = $FN.titlecase($FN.unicode_to_latex($title_latex))
+  #set $abstract_ = $FN.unicode_to_latex($abstract)
+  ## Template:
+  @Article{$bibkey
+    author = {$author_},
+    title = {$title_},
+    journal = {$journal_abbrev_title},
+    year = {$year},
+    month = {$month},
+    volume = {$volume},
+    issue = {$issue},
+    $ref_type = {$reference},
+    url = {$url},
+    pages = {$pages_}
+    abstract = {$abstract}
+  }
+md: |
+  #set $pub_month = $print_month and $print_month or $online_month
+  #set $year = $print_year and $print_year or $online_year
+  #set $month = $FN.month_abbr($pub_month).lower()
+  #set $bibkey = $author[0][0] + $year + $month
+  #set $author_ = '., '.join($FN.map('{0[0]}, {0[1]}'.format, $author))
+  #set $pages_ = '--'.join($pages)
+  #if $has_print
+    #set $print_info = ', *{}*, {}'.format($volume, $pages_)
+  #end if
+  #if $has_publication
+    #set $pub_info = '*{}*, **{}**{}'.format($journal_abbrev_title, $year, $print_info)
+  #end if
+  ## Template:
+  [^$bibkey]: **$bibkey** $author_. "$title". $pub_info [$reference]($url).
+rst: |
+  #set $year = $print_year and $print_year or $online_year
+  #set $pub_month = $print_month and $print_month or $online_month
+  #set $month = $FN.month_abbr($pub_month).lower()
+  #set $bibkey = $author[0][0] + $year + $month
+  #set $author_ = '., '.join($FN.map('{0[0]}, {0[1]}'.format, $author))
+  #set $pages_ = '--'.join($pages)
+  #if $has_print
+    #set $print_info = ', *{}*, {}'.format($volume, $pages_)
+  #end if
+  #if $has_publication
+    #set $pub_info = '*{}*, **{}**{}'.format($journal_abbrev_title, $year, $print_info)
+  #end if
+  ## Template:
+  ..[#$bibkey] [**$bibkey**] $author_. "$title". $pub_info [`$reference <$url>`__]
+text: |
+  #set $year = $print_year and $print_year or $online_year
+  #set $pub_month = $print_month and $print_month or $online_month
+  #set $month = $FN.month_abbr($pub_month).lower()
+  #set $bibkey = $author[0][0] + $year + $month
+  #set $author_ = '., '.join($FN.map('{0[0]}, {0[1]}'.format, $author))
+  #set $pages_ = '--'.join($pages)
+  #if $has_print
+    #set $print_info = ', {}, {}'.format($volume, $pages_)
+  #end if
+  #if $has_publication
+    #set $pub_info = '{}, {}{}'.format($journal_abbrev_title, $year, $print_info)
+  #end if
+  ## Template:
+  $bibkey $author_. "$title". $pub_info $ref_type:$reference
