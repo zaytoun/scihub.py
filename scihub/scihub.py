@@ -29,6 +29,7 @@ urllib3.disable_warnings()
 # constants
 SCHOLARS_BASE_URL = 'https://scholar.google.com/scholar'
 HEADERS = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:27.0) Gecko/20100101 Firefox/27.0'}
+PUBMED_URL = 'https://pubmed.ncbi.nlm.nih.gov/'
 
 class SciHub(object):
     """
@@ -120,6 +121,55 @@ class SciHub(object):
             start += 10
 
     @retry(wait_random_min=100, wait_random_max=1000, stop_max_attempt_number=10)
+    def psearch(self, query, limit=10, download=False):
+        """
+        Performs a query on pubmed.ncbi.nlm.nih, and returns a dictionary
+        of results in the form {'papers': ...}. Unfortunately, as of now,
+        captchas can potentially prevent searches after a certain limit.
+        """
+        start = 0
+        results = {'papers': []}
+
+        while True:
+            try:
+                res = self.sess.get(PUBMED_URL, params={'q': query, 'start': start})
+            except requests.exceptions.RequestException as e:
+                results['err'] = 'Failed to complete search with query %s (connection error)' % query
+                return results
+
+            s = self._get_soup(res.content)
+            papers = s.find_all('div', class_="gs_r")
+
+            if not papers:
+                if 'CAPTCHA' in str(res.content):
+                    results['err'] = 'Failed to complete search with query %s (captcha)' % query
+                return results
+
+            for paper in papers:
+                if not paper.find('table'):
+                    source = None
+                    pdf = paper.find('div', class_='gs_ggs gs_fl')
+                    link = paper.find('h3', class_='gs_rt')
+
+                    if pdf:
+                        source = pdf.find('a')['href']
+                    elif link.find('a'):
+                        source = link.find('a')['href']
+                    else:
+                        continue
+
+                    results['papers'].append({
+                        'name': link.text,
+                        'url': source
+                    })
+
+                    if len(results['papers']) >= limit:
+                        return results
+
+            start += 10
+
+    @retry(wait_random_min=100, wait_random_max=1000, stop_max_attempt_number=10)
+
     def download(self, identifier, destination='', path=None):
         """
         Downloads a paper from sci-hub given an indentifier (DOI, PMID, URL).
@@ -262,6 +312,7 @@ def main():
     parser.add_argument('-o', '--output', metavar='path', help='directory to store papers', default='', type=str)
     parser.add_argument('-v', '--verbose', help='increase output verbosity', action='store_true')
     parser.add_argument('-p', '--proxy', help='via proxy format like socks5://user:pass@host:port', action='store', type=str)
+    parser.add_argument('-ps', '--pubmed-search', metavar='query', help='search Pubmed', type=str)
 
     args = parser.parse_args()
 
@@ -304,7 +355,13 @@ def main():
                     logger.debug('%s', result['err'])
                 else:
                     logger.debug('Successfully downloaded file with identifier %s', identifier)
-
+    elif args.pubmed_search:
+        results = sh.psearch(args.pubmed_search, args.limit)
+        if 'err' in results:
+            logger.debug('%s', result['err'])
+        else:
+            logger.debug('Successfully completed Pubmed search with query %s', args.pubmed_search)
+        print(results)
 
 if __name__ == '__main__':
     main()
