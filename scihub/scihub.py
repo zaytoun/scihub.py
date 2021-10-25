@@ -197,9 +197,14 @@ class SciHub(object):
         res = self.sess.get(self.base_url + identifier, verify=False)
         s = self._get_soup(res.content)
         iframe = s.find('iframe')
+        embed = s.find('embed')
         if iframe:
             return iframe.get('src') if not iframe.get('src').startswith('//') \
                 else 'http:' + iframe.get('src')
+        elif embed:
+            r = embed.get('src') if not embed.get('src').startswith('//') \
+                else 'http:' + embed.get('src')
+            return r + '.pdf'
 
     def _classify(self, identifier):
         """
