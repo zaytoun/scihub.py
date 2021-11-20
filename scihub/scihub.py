@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 """
@@ -260,6 +261,7 @@ def main():
     parser.add_argument('-l', '--limit', metavar='N', help='the number of search results to limit to', default=10,
                         type=int)
     parser.add_argument('-o', '--output', metavar='path', help='directory to store papers', default='', type=str)
+    parser.add_argument('-of', '--output-file', metavar='output_file', help='file name to save', default=None, type=str)
     parser.add_argument('-v', '--verbose', help='increase output verbosity', action='store_true')
     parser.add_argument('-p', '--proxy', help='via proxy format like socks5://user:pass@host:port', action='store', type=str)
 
@@ -271,7 +273,7 @@ def main():
         sh.set_proxy(args.proxy)
 
     if args.download:
-        result = sh.download(args.download, args.output)
+        result = sh.download(args.download, args.output, args.output_file)
         if 'err' in result:
             logger.debug('%s', result['err'])
         else:
