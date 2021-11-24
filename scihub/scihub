@@ -31,6 +31,10 @@ urllib3.disable_warnings()
 SCHOLARS_BASE_URL = 'https://scholar.google.com/scholar'
 HEADERS = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:27.0) Gecko/20100101 Firefox/27.0'}
 
+# Exception raised when the article is not present in Sci-Hub
+class Article404Exception(Exception):
+    pass
+
 class SciHub(object):
     """
     SciHub class can search for papers on Google Scholars 
@@ -129,7 +133,7 @@ class SciHub(object):
         """
         data = self.fetch(identifier)
 
-        if not 'err' in data:
+        if data and not 'err' in data:
             self._save(data['pdf'],
                        os.path.join(destination, path if path else data['name']))
 
@@ -144,6 +148,8 @@ class SciHub(object):
 
         try:
             url = self._get_direct_url(identifier)
+            
+            logger.info('Direct URL %s' % url)
 
             # verify=False is dangerous but sci-hub.io 
             # requires intermediate certificates to verify
@@ -186,21 +192,66 @@ class SciHub(object):
         Finds the direct source url for a given identifier.
         """
         id_type = self._classify(identifier)
+        
+        logger.info('identifier: %s' % identifier)
+        logger.info('id_type: %s' % id_type)
 
-        return identifier if id_type == 'url-direct' \
-            else self._search_direct_url(identifier)
+        if id_type == 'url-direct':
+            return identifier
+        else:
+            sdr = self._search_direct_url(identifier)
+            logger.info('sdr: %s' % sdr)
+            return sdr
 
     def _search_direct_url(self, identifier):
         """
         Sci-Hub embeds papers in an iframe. This function finds the actual
         source url which looks something like https://moscow.sci-hub.io/.../....pdf.
         """
-        res = self.sess.get(self.base_url + identifier, verify=False)
-        s = self._get_soup(res.content)
+        url = self.base_url + identifier
+        logger.debug("_search_direct_url: url=%s" % url)
+        try:
+            res = self.sess.get(url, verify=False)
+        except Exception as e:
+            logger.debug('_search_direct_url: Exception at self.sess.get')
+            logger.debug(e)
+            
+        cont = res.content.decode("utf8")
+        
+        if "sci-hub has not included this article yet" in cont:
+            raise Article404Exception()
+            
+        logger.debug('res.content=%s' % cont[:9950])
+        
+        s = self._get_soup(cont)
+        
+        # Try embedded iframe
         iframe = s.find('iframe')
         if iframe:
-            return iframe.get('src') if not iframe.get('src').startswith('//') \
-                else 'http:' + iframe.get('src')
+            logger.debug('iframe found')
+            if not iframe.get('src').startswith('//'):
+                return iframe.get('src')
+            else:
+                return 'http:' + iframe.get('src')
+        else:
+            logger.debug("iframe not found")
+            
+        # Try the following structure:
+        # <div id="article">
+        # <embed type="application/pdf" src="//index.ggws.net/downloads/2021-06-16/72/porcu2021.pdf#navpanes=0&view=FitH" id = "pdf"></embed>
+        # </div>
+        embed = s.find('embed')
+        if embed:
+            logger.debug('embed found')
+            if not embed.get('src').startswith('//'):
+                return embed.get('src')
+            else:
+                return 'http:' + embed.get('src')
+        else:
+            logger.debug("embed not found")
+            
+        logger.error("ERROR: no direct URL for PDF was found")
+        return None
 
     def _classify(self, identifier):
         """
@@ -274,7 +325,9 @@ def main():
 
     if args.download:
         result = sh.download(args.download, args.output, args.output_file)
-        if 'err' in result:
+        if not result:
+            logger.debug('Error: result is None')
+        elif 'err' in result:
             logger.debug('%s', result['err'])
         else:
             logger.debug('Successfully downloaded file with identifier %s', args.download)
