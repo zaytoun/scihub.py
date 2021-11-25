@@ -45,8 +45,8 @@ HEADERS = {
     'Upgrade-Insecure-Requests': '1'
 }
 
-# Exception raised when the article is not present in Sci-Hub
-class Article404Exception(Exception):
+# Exception raised when we need to re-run fetch()
+class FetchRetry(Exception):
     pass
 
 class SciHub(object):
@@ -146,8 +146,14 @@ class SciHub(object):
         Currently, this can potentially be blocked by a captcha if a certain
         limit has been reached.
         """
-        data = self.fetch(identifier)
-
+        while True:
+            try:
+                data = self.fetch(identifier)
+            except FetchRetry:
+                pass
+            else:
+                break
+            
         if data and not 'err' in data:
             self._save(data['pdf'],
                        os.path.join(destination, path if path else data['name']))
@@ -169,7 +175,7 @@ class SciHub(object):
                 # this sci-hub domain has been dismissed
                 # change sci-hub domain
                 logger.debug('[fetch] dismissed sci-hub domain')
-                raise requests.exceptions.ConnectionError()
+                raise FetchRetry()
             
             # verify=False is dangerous but sci-hub.io 
             # requires intermediate certificates to verify
@@ -189,7 +195,7 @@ class SciHub(object):
                       '(resolved url %s) due to captcha' % (identifier, url)
                 logger.info(msg)
                 self._change_base_url()
-                raise CaptchaNeedException(msg)
+                raise FetchRetry(msg)
                 # return {
                 #     'err': 'Failed to fetch pdf with identifier %s (resolved url %s) due to captcha'
                 #            % (identifier, url)
@@ -202,15 +208,17 @@ class SciHub(object):
                 }
 
         except requests.exceptions.ConnectionError:
-            logger.info('Cannot access {}, changing url'.format(self.available_base_url_list[0]))
+            msg = 'Cannot access {}, changing url'.format(self.available_base_url_list[0])
+            logger.info(msg)
             self._change_base_url()
+            raise FetchRetry(msg)
 
         except requests.exceptions.RequestException as e:
-            logger.info('Failed to fetch pdf with identifier %s (resolved url %s) due to request exception.'
-                       % (identifier, url))
+            msg = 'Failed to fetch pdf with identifier %s (resolved url %s) due to request exception.' \
+                  % (identifier, url)
+            logger.info(msg)
             return {
-                'err': 'Failed to fetch pdf with identifier %s (resolved url %s) due to request exception.'
-                       % (identifier, url)
+                'err': msg
             }
 
     def _get_direct_url(self, identifier):
@@ -328,9 +336,6 @@ class SciHub(object):
         name = re.sub('#view=(.+)', '', name)
         pdf_hash = hashlib.md5(res.content).hexdigest()
         return '%s-%s' % (pdf_hash, name[-20:])
-
-class CaptchaNeedException(Exception):
-    pass
 
 def main():
     sh = SciHub()
