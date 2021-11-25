@@ -45,6 +45,9 @@ HEADERS = {
     'Upgrade-Insecure-Requests': '1'
 }
 
+class Article404Exception(Exception):
+    pass
+
 # Exception raised when we need to re-run fetch()
 class FetchRetry(Exception):
     pass
@@ -206,6 +209,11 @@ class SciHub(object):
                     'url': url,
                     'name': self._generate_name(res)
                 }
+                
+        except Article404Exception:
+            return {
+                'err': 'Article not available in sci-hub'
+            }
 
         except requests.exceptions.ConnectionError:
             msg = 'Cannot access {}, changing url'.format(self.available_base_url_list[0])
@@ -233,11 +241,7 @@ class SciHub(object):
         if id_type == 'url-direct':
             return identifier
         else:
-            try:
-                url = self._search_direct_url(identifier)
-            except Article404Exception:
-                logger.debug('[_get_direct_url] article not available in sci-hub')
-                return None
+            url = self._search_direct_url(identifier)
             logger.info('[_get_direct_url] url=%s' % url)
             return url
 
