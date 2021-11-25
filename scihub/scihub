@@ -19,6 +19,8 @@ import urllib3
 from bs4 import BeautifulSoup
 from retrying import retry
 
+from fake_useragent import UserAgent
+
 # log config
 logging.basicConfig()
 logger = logging.getLogger('Sci-Hub')
@@ -26,10 +28,22 @@ logger.setLevel(logging.DEBUG)
 
 #
 urllib3.disable_warnings()
+#
+ua = UserAgent()
 
 # constants
 SCHOLARS_BASE_URL = 'https://scholar.google.com/scholar'
-HEADERS = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:27.0) Gecko/20100101 Firefox/27.0'}
+#HEADERS = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:27.0) Gecko/20100101 Firefox/27.0'}
+# random user agent
+#HEADERS = {'User-Agent': ua.random}
+# simulate Tor Browser
+HEADERS = {
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Encoding': 'gzip, deflate',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; rv:91.0) Gecko/20100101 Firefox/91.0',
+    'Upgrade-Insecure-Requests': '1'
+}
 
 # Exception raised when the article is not present in Sci-Hub
 class Article404Exception(Exception):
@@ -57,6 +71,7 @@ class SciHub(object):
         for a in s.find_all('a', href=True):
             if 'sci-hub.' in a['href']:
                 urls.append(a['href'])
+        logger.debug('[_get_available_scihub_urls] urls=%s' % ';'.join(urls))
         return urls
 
     def set_proxy(self, proxy):
@@ -147,23 +162,34 @@ class SciHub(object):
         """
 
         try:
-            url = self._get_direct_url(identifier)
+            url = self._get_direct_url(identifier)            
+            logger.info('[fetch] url=%s' % url)
             
-            logger.info('Direct URL %s' % url)
-
+            if not url:
+                # this sci-hub domain has been dismissed
+                # change sci-hub domain
+                logger.debug('[fetch] dismissed sci-hub domain')
+                raise requests.exceptions.ConnectionError()
+            
             # verify=False is dangerous but sci-hub.io 
             # requires intermediate certificates to verify
             # and requests doesn't know how to download them.
             # as a hacky fix, you can add them to your store
             # and verifying would work. will fix this later.
-            res = self.sess.get(url, verify=False)
-
-            if res.headers['Content-Type'] != 'application/pdf':
+            res = self.sess.get(url, verify=False)                
+            ctype = res.headers['Content-Type']
+            logger.debug('Content-Type: %s' % ctype)
+            
+            #if "text/html" in ctype:
+            #    logger.debug('HTML content:')
+            #    logger.debug(res.content.decode("utf8"))
+            
+            if not url or ctype != 'application/pdf':
+                msg = '[fetch] Failed to fetch pdf with identifier %s ' \
+                      '(resolved url %s) due to captcha' % (identifier, url)
+                logger.info(msg)
                 self._change_base_url()
-                logger.info('Failed to fetch pdf with identifier %s '
-                                           '(resolved url %s) due to captcha' % (identifier, url))
-                raise CaptchaNeedException('Failed to fetch pdf with identifier %s '
-                                           '(resolved url %s) due to captcha' % (identifier, url))
+                raise CaptchaNeedException(msg)
                 # return {
                 #     'err': 'Failed to fetch pdf with identifier %s (resolved url %s) due to captcha'
                 #            % (identifier, url)
@@ -193,15 +219,19 @@ class SciHub(object):
         """
         id_type = self._classify(identifier)
         
-        logger.info('identifier: %s' % identifier)
-        logger.info('id_type: %s' % id_type)
+        logger.info('[_get_direct_url] identifier: %s' % identifier)
+        logger.info('[_get_direct_url] id_type: %s' % id_type)
 
         if id_type == 'url-direct':
             return identifier
         else:
-            sdr = self._search_direct_url(identifier)
-            logger.info('sdr: %s' % sdr)
-            return sdr
+            try:
+                url = self._search_direct_url(identifier)
+            except Article404Exception:
+                logger.debug('[_get_direct_url] article not available in sci-hub')
+                return None
+            logger.info('[_get_direct_url] url=%s' % url)
+            return url
 
     def _search_direct_url(self, identifier):
         """
@@ -209,11 +239,11 @@ class SciHub(object):
         source url which looks something like https://moscow.sci-hub.io/.../....pdf.
         """
         url = self.base_url + identifier
-        logger.debug("_search_direct_url: url=%s" % url)
+        logger.debug("[_search_direct_url] url=%s" % url)
         try:
             res = self.sess.get(url, verify=False)
         except Exception as e:
-            logger.debug('_search_direct_url: Exception at self.sess.get')
+            logger.debug('[_search_direct_url] Exception at self.sess.get')
             logger.debug(e)
             
         cont = res.content.decode("utf8")
@@ -221,7 +251,7 @@ class SciHub(object):
         if "sci-hub has not included this article yet" in cont:
             raise Article404Exception()
             
-        logger.debug('res.content=%s' % cont[:9950])
+        #logger.debug('res.content=%s' % cont[:9950])
         
         s = self._get_soup(cont)
         
@@ -243,10 +273,14 @@ class SciHub(object):
         embed = s.find('embed')
         if embed:
             logger.debug('embed found')
-            if not embed.get('src').startswith('//'):
-                return embed.get('src')
+            url = embed.get('src')
+            pos = url.find("#")
+            if pos > 0:
+                url = url[0:pos]
+            if not url.startswith('//'):
+                return url
             else:
-                return 'http:' + embed.get('src')
+                return 'https:' + url
         else:
             logger.debug("embed not found")
             
@@ -326,7 +360,7 @@ def main():
     if args.download:
         result = sh.download(args.download, args.output, args.output_file)
         if not result:
-            logger.debug('Error: result is None')
+            logger.debug('[main] Error: result is None')
         elif 'err' in result:
             logger.debug('%s', result['err'])
         else:
