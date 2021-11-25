@@ -63,10 +63,10 @@ class SciHub(object):
     def __init__(self):
         self.sess = requests.Session()
         self.sess.headers = HEADERS
-        self.available_base_url_list = self._get_available_scihub_urls()
-        self.base_url = self.available_base_url_list[0] + '/'
         # Timeout for requests operation
         self.timeout = 15
+        self.available_base_url_list = self._get_available_scihub_urls()
+        self.base_url = self.available_base_url_list[0] + '/'
 
     def _get_available_scihub_urls(self):
         '''
@@ -228,7 +228,8 @@ class SciHub(object):
             }
 
         except requests.exceptions.ConnectionError:
-            msg = 'Cannot access {}, changing url'.format(self.available_base_url_list[0])
+            # timed out connections are handled here
+            msg = 'Cannot access {}, changing url\n'.format(self.available_base_url_list[0])
             logger.info(msg)
             self._change_base_url()
             raise FetchRetry(msg)
