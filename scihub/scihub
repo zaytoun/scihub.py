@@ -19,7 +19,7 @@ import urllib3
 from bs4 import BeautifulSoup
 from retrying import retry
 
-from fake_useragent import UserAgent
+#from fake_useragent import UserAgent
 
 # log config
 logging.basicConfig()
@@ -29,12 +29,12 @@ logger.setLevel(logging.DEBUG)
 #
 urllib3.disable_warnings()
 #
-ua = UserAgent()
+#ua = UserAgent()
 
 # constants
 SCHOLARS_BASE_URL = 'https://scholar.google.com/scholar'
 #HEADERS = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:27.0) Gecko/20100101 Firefox/27.0'}
-# random user agent
+# random fake user agent
 #HEADERS = {'User-Agent': ua.random}
 # simulate Tor Browser
 HEADERS = {
@@ -155,9 +155,12 @@ class SciHub(object):
             except FetchRetry:
                 pass
             else:
+                # code that executes when no exception occurs
+                logger.info('[download] fetch did not raise any exceptions')
                 break
-            
+        
         if data and not 'err' in data:
+            logger.info('[download] Saving PDF file')
             self._save(data['pdf'],
                        os.path.join(destination, path if path else data['name']))
 
@@ -177,7 +180,8 @@ class SciHub(object):
             if not url:
                 # this sci-hub domain has been dismissed
                 # change sci-hub domain
-                logger.debug('[fetch] dismissed sci-hub domain')
+                logger.debug('[fetch] dismissed sci-hub domain\n')
+                self._change_base_url()
                 raise FetchRetry()
             
             # verify=False is dangerous but sci-hub.io 
@@ -193,7 +197,7 @@ class SciHub(object):
             #    logger.debug('HTML content:')
             #    logger.debug(res.content.decode("utf8"))
             
-            if not url or ctype != 'application/pdf':
+            if ctype != 'application/pdf':
                 msg = '[fetch] Failed to fetch pdf with identifier %s ' \
                       '(resolved url %s) due to captcha' % (identifier, url)
                 logger.info(msg)
@@ -204,6 +208,7 @@ class SciHub(object):
                 #            % (identifier, url)
                 # }
             else:
+                logger.info('[fetch] PDF retrieved')
                 return {
                     'pdf': res.content,
                     'url': url,
