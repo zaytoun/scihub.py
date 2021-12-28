@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 """
@@ -18,6 +19,10 @@ import urllib3
 from bs4 import BeautifulSoup
 from retrying import retry
 
+from fake_useragent import UserAgent
+
+from requests.exceptions import Timeout
+
 # log config
 logging.basicConfig()
 logger = logging.getLogger('Sci-Hub')
@@ -25,10 +30,29 @@ logger.setLevel(logging.DEBUG)
 
 #
 urllib3.disable_warnings()
+#
+ua = UserAgent()
 
 # constants
 SCHOLARS_BASE_URL = 'https://scholar.google.com/scholar'
-HEADERS = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:27.0) Gecko/20100101 Firefox/27.0'}
+#HEADERS = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:27.0) Gecko/20100101 Firefox/27.0'}
+# random fake user agent
+HEADERS = {'User-Agent': ua.random}
+# simulate Tor Browser
+#HEADERS = {
+#    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+#    'Accept-Encoding': 'gzip, deflate',
+#    'Accept-Language': 'en-US,en;q=0.5',
+#    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; rv:91.0) Gecko/20100101 Firefox/91.0',
+#    'Upgrade-Insecure-Requests': '1'
+#}
+
+class Article404Exception(Exception):
+    pass
+
+# Exception raised when we need to re-run fetch()
+class FetchRetry(Exception):
+    pass
 
 class SciHub(object):
     """
@@ -39,6 +63,8 @@ class SciHub(object):
     def __init__(self):
         self.sess = requests.Session()
         self.sess.headers = HEADERS
+        # Timeout for requests operation
+        self.timeout = 15
         self.available_base_url_list = self._get_available_scihub_urls()
         self.base_url = self.available_base_url_list[0] + '/'
 
@@ -47,11 +73,12 @@ class SciHub(object):
         Finds available scihub urls via https://sci-hub.now.sh/
         '''
         urls = []
-        res = requests.get('https://sci-hub.now.sh/')
+        res = requests.get('https://sci-hub.now.sh/', timeout=self.timeout)
         s = self._get_soup(res.content)
         for a in s.find_all('a', href=True):
             if 'sci-hub.' in a['href']:
                 urls.append(a['href'])
+        logger.debug('[_get_available_scihub_urls] urls=%s' % ';'.join(urls))
         return urls
 
     def set_proxy(self, proxy):
@@ -63,7 +90,8 @@ class SciHub(object):
         if proxy:
             self.sess.proxies = {
                 "http": proxy,
-                "https": proxy, }
+                "https": proxy 
+                }
 
     def _change_base_url(self):
         if not self.available_base_url_list:
@@ -83,7 +111,9 @@ class SciHub(object):
 
         while True:
             try:
-                res = self.sess.get(SCHOLARS_BASE_URL, params={'q': query, 'start': start})
+                res = self.sess.get(SCHOLARS_BASE_URL, 
+                                    params={'q': query, 'start': start},
+                                    timeout=self.timeout)
             except requests.exceptions.RequestException as e:
                 results['err'] = 'Failed to complete search with query %s (connection error)' % query
                 return results
@@ -126,9 +156,18 @@ class SciHub(object):
         Currently, this can potentially be blocked by a captcha if a certain
         limit has been reached.
         """
-        data = self.fetch(identifier)
-
-        if not 'err' in data:
+        while True:
+            try:
+                data = self.fetch(identifier)
+            except FetchRetry:
+                pass
+            else:
+                # code that executes when no exception occurs
+                logger.info('[download] fetch did not raise any exceptions')
+                break
+        
+        if data and not 'err' in data:
+            logger.info('[download] Saving PDF file')
             self._save(data['pdf'],
                        os.path.join(destination, path if path else data['name']))
 
@@ -142,42 +181,65 @@ class SciHub(object):
         """
 
         try:
-            url = self._get_direct_url(identifier)
-
+            url = self._get_direct_url(identifier)            
+            logger.info('[fetch] url=%s' % url)
+            
+            if not url:
+                # this sci-hub domain has been dismissed
+                # change sci-hub domain
+                logger.debug('[fetch] dismissed sci-hub domain\n')
+                self._change_base_url()
+                raise FetchRetry()
+            
             # verify=False is dangerous but sci-hub.io 
             # requires intermediate certificates to verify
             # and requests doesn't know how to download them.
             # as a hacky fix, you can add them to your store
             # and verifying would work. will fix this later.
-            res = self.sess.get(url, verify=False)
-
-            if res.headers['Content-Type'] != 'application/pdf':
+            res = self.sess.get(url, verify=False, timeout=self.timeout)                
+            ctype = res.headers['Content-Type']
+            logger.debug('Content-Type: %s' % ctype)
+            
+            #if "text/html" in ctype:
+            #    logger.debug('HTML content:')
+            #    logger.debug(res.content.decode("utf8"))
+            
+            if ctype != 'application/pdf':
+                msg = '[fetch] Failed to fetch pdf with identifier %s ' \
+                      '(resolved url %s) due to captcha' % (identifier, url)
+                logger.info(msg)
                 self._change_base_url()
-                logger.info('Failed to fetch pdf with identifier %s '
-                                           '(resolved url %s) due to captcha' % (identifier, url))
-                raise CaptchaNeedException('Failed to fetch pdf with identifier %s '
-                                           '(resolved url %s) due to captcha' % (identifier, url))
+                raise FetchRetry(msg)
                 # return {
                 #     'err': 'Failed to fetch pdf with identifier %s (resolved url %s) due to captcha'
                 #            % (identifier, url)
                 # }
             else:
+                logger.info('[fetch] PDF retrieved')
                 return {
                     'pdf': res.content,
                     'url': url,
                     'name': self._generate_name(res)
                 }
+                
+        except Article404Exception:
+            return {
+                'err': 'Article not available in sci-hub'
+            }
 
         except requests.exceptions.ConnectionError:
-            logger.info('Cannot access {}, changing url'.format(self.available_base_url_list[0]))
+            # timed out connections are handled here
+            msg = 'Cannot access {}, changing url\n'.format(self.available_base_url_list[0])
+            logger.info(msg)
             self._change_base_url()
+            raise FetchRetry(msg)
 
         except requests.exceptions.RequestException as e:
-            logger.info('Failed to fetch pdf with identifier %s (resolved url %s) due to request exception.'
-                       % (identifier, url))
+            msg = 'Failed to fetch pdf with identifier %s (resolved url %s) due to request exception.' \
+                  % (identifier, url)
+            logger.info(msg)
             return {
-                'err': 'Failed to fetch pdf with identifier %s (resolved url %s) due to request exception.'
-                       % (identifier, url)
+                'err': msg
             }
 
     def _get_direct_url(self, identifier):
@@ -185,21 +247,71 @@ class SciHub(object):
         Finds the direct source url for a given identifier.
         """
         id_type = self._classify(identifier)
+        
+        logger.info('[_get_direct_url] identifier: %s' % identifier)
+        logger.info('[_get_direct_url] id_type: %s' % id_type)
 
-        return identifier if id_type == 'url-direct' \
-            else self._search_direct_url(identifier)
+        if id_type == 'url-direct':
+            return identifier
+        else:
+            url = self._search_direct_url(identifier)
+            logger.info('[_get_direct_url] url=%s' % url)
+            return url
 
     def _search_direct_url(self, identifier):
         """
         Sci-Hub embeds papers in an iframe. This function finds the actual
         source url which looks something like https://moscow.sci-hub.io/.../....pdf.
         """
-        res = self.sess.get(self.base_url + identifier, verify=False)
-        s = self._get_soup(res.content)
+        url = self.base_url + identifier
+        logger.debug("[_search_direct_url] url=%s" % url)
+        try:
+            res = self.sess.get(url, verify=False, timeout=self.timeout)
+        except Exception as e:
+            logger.debug('[_search_direct_url] Exception at self.sess.get')
+            logger.debug(e)
+            raise e
+            
+        cont = res.content.decode("utf8")
+        
+        if "sci-hub has not included this article yet" in cont:
+            raise Article404Exception()
+            
+        #logger.debug('res.content=%s' % cont[:9950])
+        
+        s = self._get_soup(cont)
+        
+        # Try embedded iframe
         iframe = s.find('iframe')
         if iframe:
-            return iframe.get('src') if not iframe.get('src').startswith('//') \
-                else 'http:' + iframe.get('src')
+            logger.debug('iframe found')
+            if not iframe.get('src').startswith('//'):
+                return iframe.get('src')
+            else:
+                return 'http:' + iframe.get('src')
+        else:
+            logger.debug("iframe not found")
+            
+        # Try the following structure:
+        # <div id="article">
+        # <embed type="application/pdf" src="//index.ggws.net/downloads/2021-06-16/72/porcu2021.pdf#navpanes=0&view=FitH" id = "pdf"></embed>
+        # </div>
+        embed = s.find('embed')
+        if embed:
+            logger.debug('embed found')
+            url = embed.get('src')
+            pos = url.find("#")
+            if pos > 0:
+                url = url[0:pos]
+            if not url.startswith('//'):
+                return url
+            else:
+                return 'https:' + url
+        else:
+            logger.debug("embed not found")
+            
+        logger.error("ERROR: no direct URL for PDF was found")
+        return None
 
     def _classify(self, identifier):
         """
@@ -243,9 +355,6 @@ class SciHub(object):
         pdf_hash = hashlib.md5(res.content).hexdigest()
         return '%s-%s' % (pdf_hash, name[-20:])
 
-class CaptchaNeedException(Exception):
-    pass
-
 def main():
     sh = SciHub()
 
@@ -260,8 +369,10 @@ def main():
     parser.add_argument('-l', '--limit', metavar='N', help='the number of search results to limit to', default=10,
                         type=int)
     parser.add_argument('-o', '--output', metavar='path', help='directory to store papers', default='', type=str)
+    parser.add_argument('-of', '--output-file', metavar='output_file', help='file name to save', default=None, type=str)
     parser.add_argument('-v', '--verbose', help='increase output verbosity', action='store_true')
     parser.add_argument('-p', '--proxy', help='via proxy format like socks5://user:pass@host:port', action='store', type=str)
+    parser.add_argument('--timeout', help='timeout for requests operation', action='store', type=int, default=15)
 
     args = parser.parse_args()
 
@@ -269,10 +380,14 @@ def main():
         logger.setLevel(logging.DEBUG)
     if args.proxy:
         sh.set_proxy(args.proxy)
+        
+    sh.timeout = args.timeout
 
     if args.download:
-        result = sh.download(args.download, args.output)
-        if 'err' in result:
+        result = sh.download(args.download, args.output, args.output_file)
+        if not result:
+            logger.debug('[main] Error: result is None')
+        elif 'err' in result:
             logger.debug('%s', result['err'])
         else:
             logger.debug('Successfully downloaded file with identifier %s', args.download)
